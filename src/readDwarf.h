@@ -180,6 +180,7 @@ struct DWARF_FileName
 	}
 };
 
+// In-memory representation of a DIE (Debugging Info Entry).
 struct DWARF_InfoData
 {
 	byte* entryPtr;
