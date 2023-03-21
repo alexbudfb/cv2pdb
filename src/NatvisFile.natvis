@@ -3,11 +3,24 @@
 	<Type Name="DWARF_InfoData">
 		<DisplayString>tag={tag} code={code} {name,s}</DisplayString>
 		<Expand>
-			<LinkedListItems>				
-				<HeadPointer>children</HeadPointer>
-				<NextPointer>next</NextPointer>
-				<ValueNode>this</ValueNode>
-			</LinkedListItems>
+			<Synthetic Name="children" Condition="children">
+				<Expand>
+					<LinkedListItems>
+						<HeadPointer>children</HeadPointer>
+						<NextPointer>next</NextPointer>
+						<ValueNode>this</ValueNode>
+					</LinkedListItems>
+				</Expand>
+			</Synthetic>
+			<Synthetic Name="siblings" Condition="next">
+				<Expand>
+					<LinkedListItems>
+						<HeadPointer>next</HeadPointer>
+						<NextPointer>next</NextPointer>
+						<ValueNode>this</ValueNode>
+					</LinkedListItems>
+				</Expand>
+			</Synthetic>
 		</Expand>
 	</Type>
 </AutoVisualizer>
