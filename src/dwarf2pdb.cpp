@@ -759,13 +759,17 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	if (cursor.cu)
 	{
 		bool endarg = false;
-		DWARF_InfoData* node = nullptr;
+		DWARF_InfoData id;
 		int off = 8;
 
+		// Save off the cursor to the start of the proc.
 		DIECursor prev = cursor;
-		while ((node = cursor.readNext(nullptr, true /* stopAtNull */)) != nullptr)
+
+		// First, collect all the formal parameters of the proc.
+		// Don't worry about storing these in the tree as we're not going to need
+		// to generate fully-qualified names like we would for functions/classes.
+		while (cursor.readNext(&id, true /* stopAtNull */))
 		{
-			DWARF_InfoData& id = *node;
 			if (id.tag == DW_TAG_formal_parameter && id.name)
 			{
 				if (id.location.type == ExprLoc || id.location.type == Block || id.location.type == SecOffset)
@@ -779,7 +783,11 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 		}
 		appendEndArg();
 
+		//  Now, collect all the lexical blocks and their stack variables.
 		std::vector<DIECursor> lexicalBlocks;
+
+		// Start from the proc base, and push all nested lexical blocks as you
+		// encounter them.
 		lexicalBlocks.push_back(prev);
 
 		while (!lexicalBlocks.empty())
@@ -787,10 +795,8 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 			cursor = lexicalBlocks.back();
 			lexicalBlocks.pop_back();
 
-			while ((node = cursor.readNext(nullptr)) != nullptr)
+			while (cursor.readNext(&id))
 			{
-				DWARF_InfoData& id = *node;
-
 				if (id.tag == DW_TAG_lexical_block)
 				{
 					// It seems it is not possible to describe blocks with
@@ -816,15 +822,23 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 					{
 						appendLexicalBlock(id, pclo + codeSegOff);
 						DIECursor next = cursor;
+
+						// Compute the sibling node of this lexical block.
 						next.gotoSibling();
 						assert(lexicalBlocks.empty() || next.ptr <= lexicalBlocks.back().ptr);
+
+						// Append the next lexical block to the list of blocks
+						// to scan later.
 						lexicalBlocks.push_back(next);
+
+						// But for now, scan down the current lexical block.
 						cursor = cursor.getSubtreeCursor();
 						continue;
 					}
 				}
 				else if (id.tag == DW_TAG_variable)
 				{
+					// Found a local variable.
 					if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
 					{
 						Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
@@ -1700,6 +1714,29 @@ bool CV2PDB::createTypes()
 	assert(typeID == nextUserType);
 	assert(typeID == firstUserType + mapOffsetToType.size());
 	return true;
+}
+
+void dumpTreeHelper(DWARF_InfoData* node) {
+	if (!node) return;
+	// First dump node
+	printf("node: %s\n", node->name);
+
+	// Then dump children.
+	printf("children:\n");
+	for (DWARF_InfoData* child = node->children; child; child = child->next) {
+		dumpTreeHelper(child);
+	}
+	
+	// Then dump siblings.
+	printf("siblings:\n");
+	for (DWARF_InfoData* n = node->next; n; n = n->next) {
+		dumpTreeHelper(n);
+	}
+}
+
+// TODO: try this out.
+void CV2PDB::dumpDwarfTree() const {
+	dumpTreeHelper(dwarfHead);	
 }
 
 bool CV2PDB::createDWARFModules()

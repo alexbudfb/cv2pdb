@@ -170,6 +170,9 @@ public:
 	bool addDWARFPublics();
 	bool writeDWARFImage(const TCHAR* opath);
 
+	// Helper to just print the DWARF tree we've built for debugging purposes.
+	void dumpDwarfTree() const;
+
 	bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
 	bool addDWARFProc(DWARF_InfoData& id, const std::vector<RangeEntry> &ranges, DIECursor cursor);
 	int  addDWARFStructure(DWARF_InfoData& id, DIECursor cursor);
