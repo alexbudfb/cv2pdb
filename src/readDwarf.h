@@ -533,7 +533,7 @@ public:
 	byte* ptr = nullptr; // the current mapped location we are reading from.
 	unsigned int entryOff;
 	int level; // the current level of the tree in the scan.
-	bool hasChild = false; // indicates whether the last read DIE has children
+	bool prevHasChild = false; // indicates whether the last read DIE has children
 
 	// last DIE scanned. Used to link subsequent nodes in a list.
 	DWARF_InfoData* prevNode = nullptr;

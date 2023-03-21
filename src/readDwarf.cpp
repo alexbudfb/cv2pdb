@@ -589,7 +589,7 @@ DIECursor::DIECursor(DWARF_CompilationUnitInfo* cu_, byte* ptr_)
 	cu = cu_;
 	ptr = ptr_;
 	level = 0;
-	hasChild = false;
+	prevHasChild = false;
 	sibling = 0;
 }
 
@@ -607,15 +607,15 @@ void DIECursor::gotoSibling()
 	{
 		// Fast path: use sibling pointer, if available.
 		ptr = sibling;
-		hasChild = false;
+		prevHasChild = false;
 	}
-	else if (hasChild)
+	else if (prevHasChild)
 	{
 		// Slow path. Skip over child nodes until we get back to the current
 		// level.
 		const int currLevel = level;
 		level = currLevel + 1;
-		hasChild = false;
+		prevHasChild = false;
 
 		// Don't store these in the tree since this is just used for skipping over
 		// last swaths of nodes.
@@ -629,11 +629,11 @@ void DIECursor::gotoSibling()
 
 DIECursor DIECursor::getSubtreeCursor()
 {
-	if (hasChild)
+	if (prevHasChild)
 	{
 		DIECursor subtree = *this;
 		subtree.level = 0;
-		subtree.hasChild = false;
+		subtree.prevHasChild = false;
 		return subtree;
 	}
 	else // Return invalid cursor
@@ -714,9 +714,12 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 		entry = node.get();
 	}
 	
-	if (hasChild) {
+	if (prevHasChild) {
 		// Prior element had a child, thus this element is its first child.
 		++level;
+
+		// Establish the first child.
+		prevParent->children = entry;
 	}
 
 	// If there was a previous node, link it to this one, thus continuing the chain.
@@ -756,7 +759,7 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 			--level; // pop up one level
 			if (stopAtNull)
 			{
-				hasChild = false;
+				prevHasChild = false;
 				return nullptr;
 			}
 			continue; // read the next DIE
@@ -962,9 +965,11 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 		}
 	}
 
-	hasChild = id.hasChild != 0;
+	prevHasChild = id.hasChild != 0;
 	sibling = id.sibling;
 
+	// Transfer ownership of 'node' to caller, if we allocated one.
+	node.release();
 	return entry;
 }
 
