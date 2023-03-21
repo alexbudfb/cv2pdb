@@ -366,11 +366,13 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 	return stack[0];
 }
 
+// Find the source of an inlined function by following its 'abstract_origin' 
+// attribute references  and recursively merge it into 'id'.
 void mergeAbstractOrigin(DWARF_InfoData& id, const DIECursor& parent)
 {
 	DIECursor specCursor(parent, id.abstract_origin);
 	DWARF_InfoData idspec;
-	specCursor.readNext(idspec);
+	specCursor.readNext(&idspec);
 	// assert seems invalid, combination DW_TAG_member and DW_TAG_variable found in the wild
 	// assert(id.tag == idspec.tag);
 	if (idspec.abstract_origin)
@@ -380,11 +382,13 @@ void mergeAbstractOrigin(DWARF_InfoData& id, const DIECursor& parent)
 	id.merge(idspec);
 }
 
+// Find the source of a definition by following its 'specification' attribute 
+// references and merge it into 'id'.
 void mergeSpecification(DWARF_InfoData& id, const DIECursor& parent)
 {
 	DIECursor specCursor(parent, id.specification);
 	DWARF_InfoData idspec;
-	specCursor.readNext(idspec);
+	specCursor.readNext(&idspec);
 	//assert seems invalid, combination DW_TAG_member and DW_TAG_variable found in the wild
 	//assert(id.tag == idspec.tag);
 	if (idspec.abstract_origin)

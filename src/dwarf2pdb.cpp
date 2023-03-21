@@ -872,10 +872,12 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseo
 	bool isunion = structid.tag == DW_TAG_union_type;
 	int nfields = 0;
 
-	// cursor points to the first member
-	DWARF_InfoData id;
-	while (cursor.readNext(id, true))
+	// cursor points to the first member of the class/struct/union.
+	DWARF_InfoData* node = nullptr;
+	while ((node = cursor.readNext(nullptr, true)) != nullptr)
 	{
+		DWARF_InfoData& id = *node;
+
 		if (cbDwarfTypes - flStart > 0x10000 - kMaxNameLen - 100)
 			break; // no more space in field list, TODO: add continuation record, see addDWARFEnum
 
@@ -907,9 +909,10 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseo
 				{
 					// if it doesn't have a name, and it's a struct or union, embed it directly
 					DIECursor membercursor(cursor, id.type);
-					DWARF_InfoData memberid;
-					if (membercursor.readNext(memberid))
+					if ((node = membercursor.readNext(nullptr)) != nullptr)
 					{
+						DWARF_InfoData& memberid = *node;
+
 						if (memberid.abstract_origin)
 							mergeAbstractOrigin(memberid, cursor);
 						if (memberid.specification)
@@ -956,6 +959,7 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseo
 	return nfields;
 }
 
+// Add a class/struct/union to the database.
 int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 {
 	//printf("Adding struct %s, entryoff %d, abbrev %d\n", structid.name, structid.entryOff, structid.abbrev);
@@ -1004,14 +1008,17 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 	return cvtype;
 }
 
-void CV2PDB::getDWARFArrayBounds(DWARF_InfoData& arrayid, DIECursor cursor, int& basetype, int& lowerBound, int& upperBound)
+// Compute the array bounds of the DIE at the given 'cursor'.
+void CV2PDB::getDWARFArrayBounds(DIECursor cursor, int& basetype, int& lowerBound, int& upperBound)
 {
 	DWARF_InfoData id;
 
 	// TODO: handle multi-dimensional arrays
 	if (cursor.cu)
 	{
-		while (cursor.readNext(id, true))
+		// Don't insert these elements into the DB. We're just using it for
+		// array bounds calculation.
+		while (cursor.readNext(&id, true /* stopAtNull */))
 		{
 			if (id.tag == DW_TAG_subrange_type)
 			{
@@ -1109,7 +1116,7 @@ int CV2PDB::getDWARFBasicType(int encoding, int byte_size)
 int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, DIECursor cursor)
 {
 	int basetype, upperBound, lowerBound;
-	getDWARFArrayBounds(arrayid, cursor, basetype, lowerBound, upperBound);
+	getDWARFArrayBounds(cursor, basetype, lowerBound, upperBound);
 
 	checkUserTypeAlloc(kMaxNameLen + 100);
 	codeview_type* cvt = (codeview_type*) (userTypes + cbUserTypes);
@@ -1244,9 +1251,11 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 	fieldlistLength += 4;
 
 	/* Now fill this field list with the enumerators we find in DWARF. */
-	DWARF_InfoData id;
-	while (cursor.readNext(id, true))
+	DWARF_InfoData* node = nullptr;
+	while ((node = cursor.readNext(nullptr, true /* stopAtNull */)) != nullptr)
 	{
+		DWARF_InfoData& id = *node;
+
 		if (id.tag == DW_TAG_enumerator && id.has_const_value)
 		{
 			cbDwarfTypes = fieldlistOffset + fieldlistLength;
@@ -1331,12 +1340,16 @@ int CV2PDB::getTypeByDWARFPtr(byte* ptr)
 	return it->second;
 }
 
+// Get the logical size of a DWARF type, starting from 'typePtr' and recursing
+// if necessary. E.g. for arrays.
 int CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
 {
 	DWARF_InfoData id;
 	DIECursor cursor(parent, typePtr);
 
-	if (!cursor.readNext(id))
+	// Don't allocate this into the tree since we're just interested
+	// in computing a type.
+	if (!cursor.readNext(&id))
 		return 0;
 
 	if(id.byte_size > 0)
@@ -1351,7 +1364,7 @@ int CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
 		case DW_TAG_array_type:
 		{
 			int basetype, upperBound, lowerBound;
-			getDWARFArrayBounds(id, cursor, basetype, lowerBound, upperBound);
+			getDWARFArrayBounds(cursor, basetype, lowerBound, upperBound);
 			return (upperBound - lowerBound + 1) * getDWARFTypeSize(cursor, id.type);
 		}
 		default:

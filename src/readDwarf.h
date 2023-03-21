@@ -221,6 +221,8 @@ struct DWARF_InfoData
 	unsigned long pchi;
 	unsigned long ranges; // -1u when attribute is not present
 	unsigned long pcentry;
+
+	// Pointer to the DW_AT_type DIE describing the type of this DIE.
 	byte* type;
 	byte* containing_type;
 	byte* specification;

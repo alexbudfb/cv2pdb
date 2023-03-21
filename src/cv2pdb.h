@@ -179,7 +179,7 @@ public:
 	int  addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor);
 	int  getTypeByDWARFPtr(byte* ptr);
 	int  getDWARFTypeSize(const DIECursor& parent, byte* ptr);
-	void getDWARFArrayBounds(DWARF_InfoData& arrayid, DIECursor cursor,
+	void getDWARFArrayBounds(DIECursor cursor,
 		int& basetype, int& lowerBound, int& upperBound);
 	void getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, const DIECursor& parent,
 		int& basetype, int& lowerBound, int& upperBound);
