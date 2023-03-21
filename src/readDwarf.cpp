@@ -708,18 +708,36 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 {
 	std::unique_ptr<DWARF_InfoData> node;
 
+	// Controls whether we should bother establishing links between nodes.
+	// If 'entry' is provided, we are just going to be using it instead
+	// of allocating our own nodes. The callers typically reuse the same
+	// node over and over in this case, so don't bother tracking the links.
+	// Furthermore, since we clear the input node in this case, we can't rely
+	// on it from call to call.
+	// TODO: Rethink how to more cleanly express the alloc vs reuse modes of
+	// operation.
+	bool establishLinks = false;
+
 	// If an entry was passed in, use it. Else allocate one.
 	if (!entry) {
+		establishLinks = true;
 		node = std::make_unique<DWARF_InfoData>();
 		entry = node.get();
+	} else {
+		// If an entry was provided, make sure we clear it.
+		entry->clear();
 	}
+
+	entry->img = img;
 	
 	if (prevHasChild) {
 		// Prior element had a child, thus this element is its first child.
 		++level;
 
-		// Establish the first child.
-		prevParent->children = entry;
+		if (establishLinks) {
+			// Establish the first child.
+			prevParent->children = entry;
+		}
 	}
 
 	// Set up a convenience alias.
@@ -745,12 +763,13 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 		if (id.code == 0)
 		{
 			// Done with this level.
+			if (establishLinks) {
+				// Continue linking siblings from the parent node.
+				prevNode = prevParent;
 
-			// Continue linking siblings from the parent node.
-			prevNode = prevParent;
-
-			// Unwind the parent one level up.
-			prevParent = prevParent->parent;
+				// Unwind the parent one level up.
+				prevParent = prevParent->parent;
+			}
 
 			--level;
 			if (stopAtNull)
@@ -772,29 +791,32 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 		return nullptr;
 	}
 
-	// If there was a previous node, link it to this one, thus continuing the chain.
-	if (prevNode) {
-		prevNode->next = entry;
-	}
-
-	// Establish parent of current node. If 'prevParent' is NULL, that is fine.
-	// It just means this node is a top-level node.
-	entry->parent = prevParent;
-
 	id.abbrev = abbrev;
 	id.tag = LEB128(abbrev);
 	id.hasChild = *abbrev++;
 
-	if (id.hasChild) {
-		// This node has children! Establish it as a new parent.		
-		prevParent = entry;
+	if (establishLinks) {
+		// If there was a previous node, link it to this one, thus continuing the chain.
+		if (prevNode) {
+			prevNode->next = entry;
+		}
 
-		// Clear the last DIE because the next scanned node will form the *start*
-		// of a new linked list comprising the children of the current node.
-		prevNode = nullptr;
-	} else {
-		// Ensure the next node appends itself to this one.
-		prevNode = entry;
+		// Establish parent of current node. If 'prevParent' is NULL, that is fine.
+		// It just means this node is a top-level node.
+		entry->parent = prevParent;
+
+		if (id.hasChild) {
+			// This node has children! Establish it as the new parent for future nodes.		
+			prevParent = entry;
+
+			// Clear the last DIE because the next scanned node will form the *start*
+			// of a new linked list comprising the children of the current node.
+			prevNode = nullptr;
+		}
+		else {
+			// Ensure the next node appends itself to this one.
+			prevNode = entry;
+		}
 	}
 
 	if (debug & DbgDwarfAttrRead)

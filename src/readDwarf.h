@@ -183,6 +183,9 @@ struct DWARF_FileName
 // In-memory representation of a DIE (Debugging Info Entry).
 struct DWARF_InfoData
 {
+	// The PEImage for this entry.
+	PEImage* img = nullptr;
+
 	// Pointer into the mapped image section where this DIE is located.
 	byte* entryPtr;
 

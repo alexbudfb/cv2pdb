@@ -1726,7 +1726,8 @@ void dumpTreeHelper(DWARF_InfoData* node, int level) {
 	if (!node) return;
 	printIndent(level);
 	// First dump node
-	printf("node: %s\n", node->name);
+	const unsigned dieOffset = node->img->debug_info.sectOff(node->entryPtr);
+	printf("offset: %#x, name: \"%s\", tag: %#x, abbrev: %d\n", dieOffset, node->name, node->tag, node->code);
 
 	printIndent(level);
 	// Then dump children.
