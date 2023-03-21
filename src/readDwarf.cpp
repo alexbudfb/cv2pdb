@@ -722,19 +722,10 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 		prevParent->children = entry;
 	}
 
-	// If there was a previous node, link it to this one, thus continuing the chain.
-	if (prevNode) {
-		prevNode->next = entry;
-	}
-
-	// Establish parent of current node. If 'prevParent' is NULL, that is fine.
-	// It just means this node is a top-level node.
-	entry->parent = prevParent;
-
 	// Set up a convenience alias.
 	DWARF_InfoData& id = *entry;
 
-	// Find the next valid DIE.
+	// Find the first valid DIE.
 	for (;;)
 	{
 		if (level == -1)
@@ -747,16 +738,21 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 		entryOff = img->debug_info.sectOff(ptr);
 		id.code = LEB128(ptr);
 
+		// If the previously scanned node claimed to have a child, this must be a valid DIE.
+		assert(!prevHasChild || id.code);
+
 		// Check if we need to terminate the sibling chain.
 		if (id.code == 0)
 		{
-			// Done with this level. Unwind the parent.
+			// Done with this level.
+
+			// Continue linking siblings from the parent node.
+			prevNode = prevParent;
+
+			// Unwind the parent one level up.
 			prevParent = prevParent->parent;
 
-			// Start a new linked list for siblings.
-			prevNode = nullptr;
-
-			--level; // pop up one level
+			--level;
 			if (stopAtNull)
 			{
 				prevHasChild = false;
@@ -775,6 +771,15 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 		assert(abbrev);
 		return nullptr;
 	}
+
+	// If there was a previous node, link it to this one, thus continuing the chain.
+	if (prevNode) {
+		prevNode->next = entry;
+	}
+
+	// Establish parent of current node. If 'prevParent' is NULL, that is fine.
+	// It just means this node is a top-level node.
+	entry->parent = prevParent;
 
 	id.abbrev = abbrev;
 	id.tag = LEB128(abbrev);
