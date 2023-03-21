@@ -1716,27 +1716,36 @@ bool CV2PDB::createTypes()
 	return true;
 }
 
-void dumpTreeHelper(DWARF_InfoData* node) {
+void printIndent(int level) {
+	for (int i = 0; i < level; ++i) {
+		printf("  ");
+	}
+}
+
+void dumpTreeHelper(DWARF_InfoData* node, int level) {
 	if (!node) return;
+	printIndent(level);
 	// First dump node
 	printf("node: %s\n", node->name);
 
+	printIndent(level);
 	// Then dump children.
 	printf("children:\n");
 	for (DWARF_InfoData* child = node->children; child; child = child->next) {
-		dumpTreeHelper(child);
+		dumpTreeHelper(child, level + 1);
 	}
 	
+	printIndent(level);
 	// Then dump siblings.
 	printf("siblings:\n");
 	for (DWARF_InfoData* n = node->next; n; n = n->next) {
-		dumpTreeHelper(n);
+		dumpTreeHelper(n, level);
 	}
 }
 
 // TODO: try this out.
 void CV2PDB::dumpDwarfTree() const {
-	dumpTreeHelper(dwarfHead);	
+	dumpTreeHelper(dwarfHead, 0);	
 }
 
 bool CV2PDB::createDWARFModules()
@@ -1786,6 +1795,8 @@ bool CV2PDB::createDWARFModules()
 		return false;
 	if (!createTypes())
 		return false;
+
+	dumpDwarfTree();
 
 	/*
 	if(!iterateDWARFDebugInfo(kOpMapTypes))
