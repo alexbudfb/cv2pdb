@@ -695,7 +695,7 @@ void CV2PDB::appendLexicalBlock(DWARF_InfoData& id, unsigned int proclo)
 	cbUdtSymbols += len;
 }
 
-bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> &ranges, DIECursor cursor)
+bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> &ranges, DIECursor& cursor)
 {
 	unsigned int pclo = ranges.front().pclo - codeSegOff;
 	unsigned int pchi = ranges.front().pchi - codeSegOff;
@@ -881,7 +881,8 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	return true;
 }
 
-int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseoff, int flStart)
+// Only looks at DW_TAG_member and DW_TAG_inheritance
+int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int baseoff, int flStart)
 {
 	bool isunion = structid.tag == DW_TAG_union_type;
 	int nfields = 0;
@@ -974,7 +975,7 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseo
 }
 
 // Add a class/struct/union to the database.
-int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
+int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor& cursor)
 {
 	//printf("Adding struct %s, entryoff %d, abbrev %d\n", structid.name, structid.entryOff, structid.abbrev);
 
@@ -1023,7 +1024,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 }
 
 // Compute the array bounds of the DIE at the given 'cursor'.
-void CV2PDB::getDWARFArrayBounds(DIECursor cursor, int& basetype, int& lowerBound, int& upperBound)
+void CV2PDB::getDWARFArrayBounds(DIECursor& cursor, int& basetype, int& lowerBound, int& upperBound)
 {
 	DWARF_InfoData id;
 
@@ -1127,7 +1128,10 @@ int CV2PDB::getDWARFBasicType(int encoding, int byte_size)
 	return translateType(t);
 }
 
-int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, DIECursor cursor)
+// TODO: Array wanted to be scanned twice due to DW_TAG_subrange_type being looked at
+// in the caller. See if it can be handled in a single place for clarity, simplicity & efficiency.
+// Goal: don't rescan the same DIE twice.
+int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, DIECursor& cursor)
 {
 	int basetype, upperBound, lowerBound;
 	getDWARFArrayBounds(cursor, basetype, lowerBound, upperBound);
@@ -1223,7 +1227,7 @@ int CV2PDB::addDWARFBasicType(const char*name, int encoding, int byte_size)
 	return cvtype;
 }
 
-int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
+int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor& cursor)
 {
 	/* Enumerated types are described in CodeView with two components:
 
@@ -1554,14 +1558,14 @@ bool CV2PDB::createTypes()
 			case DW_TAG_class_type:
 			case DW_TAG_structure_type:
 			case DW_TAG_union_type:
-				cvtype = addDWARFStructure(id, cursor.getSubtreeCursor());
+				cvtype = addDWARFStructure(id, cursor);
 				break;
 			case DW_TAG_array_type:
-				cvtype = addDWARFArray(id, cursor.getSubtreeCursor());
+				cvtype = addDWARFArray(id, cursor);
 				break;
 
 			case DW_TAG_enumeration_type:
-				cvtype = addDWARFEnum(id, cursor.getSubtreeCursor());
+				cvtype = addDWARFEnum(id, cursor);
 				break;
 
 			case DW_TAG_subroutine_type:
@@ -1595,7 +1599,7 @@ bool CV2PDB::createTypes()
 
 							mod->AddPublic2(id.name, img.text.secNo + 1, entry_point - codeSegOff, 0);
 						}
-						addDWARFProc(id, ranges, cursor.getSubtreeCursor());
+						addDWARFProc(id, ranges, cursor);
 					}
 				}
 				break;
@@ -1848,7 +1852,7 @@ bool CV2PDB::addDWARFPublics()
 	mspdb::Mod* mod = globalMod();
 
 	int type = 0;
-	int rc = mod->AddPublic2("public_all", img.text.secNo + 1, 0, 0x1000);
+	int rc = mod->AddPublic2("public_all", img.text.secNo + 1, 0, BASE_DWARF_TYPE);
 	if (rc <= 0)
 		return setError("cannot add public");
 	return true;
