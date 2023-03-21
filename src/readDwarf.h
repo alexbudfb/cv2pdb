@@ -183,16 +183,38 @@ struct DWARF_FileName
 // In-memory representation of a DIE (Debugging Info Entry).
 struct DWARF_InfoData
 {
+	// Pointer into the mapped image section where this DIE is located.
 	byte* entryPtr;
+
+	// Code to find the abbrev entry for this DIE, or 0 if it a sentinel marking
+	// the end of a sibling chain.
 	int code;
+
+	// Pointer to the abbreviation table entry that corresponds to this DIE.
 	byte* abbrev;
 	int tag;
+
+	// Does this DIE have children?
 	int hasChild;
+
+	// Parent of this DIE, or NULL if top-level element.
+	DWARF_InfoData* parent = nullptr;
+
+	// Pointer to sibling in the tree. Not to be confused with 'sibling' below,
+	// which is a raw pointer to the DIE in the mapped/loaded image section.
+	// NULL if no more elements.
+	DWARF_InfoData* next = nullptr;
+
+	// Pointer to first child. This forms a linked list with the 'next' pointer.
+	// NULL if no children.
+	DWARF_InfoData* children = nullptr;
 
 	const char* name;
 	const char* linkage_name;
 	const char* dir;
 	unsigned long byte_size;
+
+	// Pointer to the sibling DIE in the mapped image.
 	byte* sibling;
 	unsigned long encoding;
 	unsigned long pclo;
@@ -224,6 +246,7 @@ struct DWARF_InfoData
 		abbrev = 0;
 		tag = 0;
 		hasChild = 0;
+		parent = nullptr;
 
 		name = 0;
 		linkage_name = 0;
@@ -502,13 +525,25 @@ void mergeSpecification(DWARF_InfoData& id, const DIECursor& parent);
 // Debug Information Entry Cursor
 class DIECursor
 {
+	// TODO: make these private.
 public:
-	DWARF_CompilationUnitInfo* cu;
-	byte* ptr;
+	DWARF_CompilationUnitInfo* cu = nullptr; // the CU we are reading from.
+	byte* ptr = nullptr; // the current mapped location we are reading from.
 	unsigned int entryOff;
-	int level;
-	bool hasChild; // indicates whether the last read DIE has children
-	byte* sibling;
+	int level; // the current level of the tree in the scan.
+	bool hasChild = false; // indicates whether the last read DIE has children
+
+	// last DIE scanned. Used to link subsequent nodes in a list.
+	DWARF_InfoData* prevNode = nullptr;
+	
+	// The last parent node to which all subsequent nodes should be assigned.
+	// Initially, NULL, but as we encounter a node with children, we establish
+	// it as the new "parent" for future nodes, and reset it once we reach
+	// a top level node.
+	DWARF_InfoData* prevParent = nullptr;
+
+	// The mapped address of the sibling of the last scanned node, if any.
+	byte* sibling = nullptr;
 
 	static PEImage *img;
 	static abbrevMap_t abbrevMap;
@@ -529,17 +564,13 @@ public:
 	// Goto next sibling DIE.  If the last read DIE had any children, they will be skipped over.
 	void gotoSibling();
 
-	// Reads next sibling DIE.  If the last read DIE had any children, they will be skipped over.
-	// Returns 'false' upon reaching the last sibling on the current level.
-	bool readSibling(DWARF_InfoData& id);
-
 	// Returns cursor that will enumerate children of the last read DIE.
 	DIECursor getSubtreeCursor();
 
-	// Reads the next DIE in physical order, returns 'true' if succeeds.
+	// Reads the next DIE in physical order, returns non-NULL if succeeds.
 	// If stopAtNull is true, readNext() will stop upon reaching a null DIE (end of the current tree level).
 	// Otherwise, it will skip null DIEs and stop only at the end of the subtree for which this DIECursor was created.
-	bool readNext(DWARF_InfoData& id, bool stopAtNull = false);
+	DWARF_InfoData* readNext(DWARF_InfoData* entry, bool stopAtNull = false);
 
 	// Read an address from p according to the ambient pointer size.
 	uint64_t RDAddr(byte* &p) const

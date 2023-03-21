@@ -276,6 +276,9 @@ public:
 	int codeSegOff;
 	std::unordered_map<byte*, int> mapOffsetToType;
 
+	// Head of list of DWARF DIE nodes.
+	DWARF_InfoData* dwarfHead = nullptr;
+
 	// Default lower bound for the current compilation unit. This depends on
 	// the language of the current unit.
 	unsigned currentDefaultLowerBound;

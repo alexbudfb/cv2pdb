@@ -759,12 +759,13 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	if (cursor.cu)
 	{
 		bool endarg = false;
-		DWARF_InfoData id;
+		DWARF_InfoData* node = nullptr;
 		int off = 8;
 
 		DIECursor prev = cursor;
-		while (cursor.readNext(id, true))
+		while ((node = cursor.readNext(nullptr, true /* stopAtNull */)) != nullptr)
 		{
+			DWARF_InfoData& id = *node;
 			if (id.tag == DW_TAG_formal_parameter && id.name)
 			{
 				if (id.location.type == ExprLoc || id.location.type == Block || id.location.type == SecOffset)
@@ -786,8 +787,10 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 			cursor = lexicalBlocks.back();
 			lexicalBlocks.pop_back();
 
-			while (cursor.readNext(id))
+			while ((node = cursor.readNext(nullptr)) != nullptr)
 			{
+				DWARF_InfoData& id = *node;
+
 				if (id.tag == DW_TAG_lexical_block)
 				{
 					// It seems it is not possible to describe blocks with
@@ -1392,8 +1395,8 @@ bool CV2PDB::mapTypes()
 		DIECursor cursor(&cu, ptr);
 		DWARF_InfoData id;
 
-		// Scan the DIEs in this CU.
-		while (cursor.readNext(id))
+		// Scan the DIEs in this CU, reusing the elements.
+		while (cursor.readNext(&id))
 		{
 			if (debug & DbgDwarfTagRead)
 				fprintf(stderr, "%s:%d: 0x%08x, level = %d, id.code = %d, id.tag = %d\n", __FUNCTION__, __LINE__,
@@ -1442,6 +1445,7 @@ bool CV2PDB::mapTypes()
 	return true;
 }
 
+// Walks the .debug_info section and builds a DIE tree.
 bool CV2PDB::createTypes()
 {
 	img.createSymbolCache();
@@ -1474,12 +1478,17 @@ bool CV2PDB::createTypes()
 			continue;
 		}
 
-		// Start scanning this CU from the beginning.
+		// Start scanning this CU from the beginning and *build a tree of DIE nodes*.
 		DIECursor cursor(&cu, ptr);
-		DWARF_InfoData id;
-
-		while (cursor.readNext(id))
+		DWARF_InfoData* node = nullptr;
+		while ((node = cursor.readNext(nullptr)) != nullptr)
 		{
+			// Initialize the head of the DWARF DIE list the first time.
+			if (!dwarfHead) {
+				dwarfHead = node;
+			}
+
+			DWARF_InfoData& id = *node;
 			if (debug & DbgDwarfTagRead)
 				fprintf(stderr, "%s:%d: 0x%08x, level = %d, id.code = %d, id.tag = %d\n", __FUNCTION__, __LINE__,
 						cursor.entryOff, cursor.level, id.code, id.tag);
@@ -1668,7 +1677,7 @@ bool CV2PDB::createTypes()
 			{
 				assert(cvtype == typeID); 
 				typeID++;
-				
+
 				assert(mapOffsetToType[id.entryPtr] == cvtype);
 				assert(typeID == nextUserType);
 			}

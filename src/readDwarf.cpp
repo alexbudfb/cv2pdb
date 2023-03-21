@@ -1,6 +1,7 @@
 #include "readDwarf.h"
 #include <assert.h>
 #include <array>
+#include <memory> // unique_ptr
 
 #include "PEImage.h"
 #include "dwarf.h"
@@ -594,31 +595,32 @@ DIECursor::DIECursor(const DIECursor& parent, byte* ptr_)
 	ptr = ptr_;
 }
 
+// Advance the cursor to the next sibling of the current node, using the fast
+// path when possible.
 void DIECursor::gotoSibling()
 {
 	if (sibling)
 	{
-		// use sibling pointer, if available
+		// Fast path: use sibling pointer, if available.
 		ptr = sibling;
 		hasChild = false;
 	}
 	else if (hasChild)
 	{
-		int currLevel = level;
+		// Slow path. Skip over child nodes until we get back to the current
+		// level.
+		const int currLevel = level;
 		level = currLevel + 1;
 		hasChild = false;
 
+		// Don't store these in the tree since this is just used for skipping over
+		// last swaths of nodes.
 		DWARF_InfoData dummy;
-		// read untill we pop back to the level we were at
-		while (level > currLevel)
-			readNext(dummy, true);
-	}
-}
 
-bool DIECursor::readSibling(DWARF_InfoData& id)
-{
-    gotoSibling();
-	return readNext(id, true);
+		// read until we pop back to the level we were at
+		while (level > currLevel)
+			readNext(&dummy, true /* stopAtNull */);
+	}
 }
 
 DIECursor DIECursor::getSubtreeCursor()
@@ -697,31 +699,61 @@ static byte* getPointerInSection(const PEImage &img, const SectionDescriptor &se
 }
 
 // Scan the next DIE from the current CU.
-bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
+// TODO: Allocate a new element each time.
+DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 {
-	id.clear();
+	std::unique_ptr<DWARF_InfoData> node;
 
-	if (hasChild)
+	// If an entry was passed in, use it. Else allocate one.
+	if (!entry) {
+		node = std::make_unique<DWARF_InfoData>();
+		entry = node.get();
+	}
+	
+	if (hasChild) {
+		// Prior element had a child, thus this element is its first child.
 		++level;
+	}
 
+	// If there was a previous node, link it to this one, thus continuing the chain.
+	if (prevNode) {
+		prevNode->next = entry;
+	}
+
+	// Establish parent of current node. If 'prevParent' is NULL, that is fine.
+	// It just means this node is a top-level node.
+	entry->parent = prevParent;
+
+	// Set up a convenience alias.
+	DWARF_InfoData& id = *entry;
+
+	// Find the next valid DIE.
 	for (;;)
 	{
 		if (level == -1)
-			return false; // we were already at the end of the subtree
+			return nullptr; // we were already at the end of the subtree
 
 		if (ptr >= cu->end_ptr)
-			return false; // root of the tree does not have a null terminator, but we know the length
+			return nullptr; // root of the tree does not have a null terminator, but we know the length
 
 		id.entryPtr = ptr;
 		entryOff = img->debug_info.sectOff(ptr);
 		id.code = LEB128(ptr);
+
+		// Check if we need to terminate the sibling chain.
 		if (id.code == 0)
 		{
+			// Done with this level. Unwind the parent.
+			prevParent = prevParent->parent;
+
+			// Start a new linked list for siblings.
+			prevNode = nullptr;
+
 			--level; // pop up one level
 			if (stopAtNull)
 			{
 				hasChild = false;
-				return false;
+				return nullptr;
 			}
 			continue; // read the next DIE
 		}
@@ -734,17 +766,30 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 		fprintf(stderr, "ERROR: %s:%d: unknown abbrev: num=%d off=%x\n", __FUNCTION__, __LINE__,
 				id.code, entryOff);
 		assert(abbrev);
-		return false;
+		return nullptr;
 	}
 
 	id.abbrev = abbrev;
 	id.tag = LEB128(abbrev);
 	id.hasChild = *abbrev++;
 
+	if (id.hasChild) {
+		// This node has children! Establish it as a new parent.		
+		prevParent = entry;
+
+		// Clear the last DIE because the next scanned node will form the *start*
+		// of a new linked list comprising the children of the current node.
+		prevNode = nullptr;
+	} else {
+		// Ensure the next node appends itself to this one.
+		prevNode = entry;
+	}
+
 	if (debug & DbgDwarfAttrRead)
 		fprintf(stderr, "%s:%d: offs=%x level=%d tag=%d abbrev=%d\n", __FUNCTION__, __LINE__,
 				entryOff, level, id.tag, id.code);
 
+	// Read all the attribute data for this DIE.
 	int attr, form;
 	for (;;)
 	{
@@ -810,7 +855,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			case DW_FORM_sec_offset:     a.type = SecOffset; a.sec_offset = RDref(ptr); break;
 			case DW_FORM_loclistx:       a.type = SecOffset; a.sec_offset = resolveIndirectSecPtr(LEB128(ptr), sec_desc_debug_loclists, cu->loclist_base); break;
 			case DW_FORM_rnglistx:       a.type = SecOffset; a.sec_offset = resolveIndirectSecPtr(LEB128(ptr), sec_desc_debug_rnglists, cu->rnglist_base); break;
-			default: assert(false && "Unsupported DWARF attribute form"); return false;
+			default: assert(false && "Unsupported DWARF attribute form"); return nullptr;
 		}
 
 		switch (attr)
@@ -916,7 +961,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 	hasChild = id.hasChild != 0;
 	sibling = id.sibling;
 
-	return true;
+	return entry;
 }
 
 byte* DIECursor::getDWARFAbbrev(unsigned off, unsigned findcode)
