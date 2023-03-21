@@ -695,7 +695,7 @@ void CV2PDB::appendLexicalBlock(DWARF_InfoData& id, unsigned int proclo)
 	cbUdtSymbols += len;
 }
 
-bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> &ranges, DIECursor& cursor)
+bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> &ranges, DIECursor cursor)
 {
 	unsigned int pclo = ranges.front().pclo - codeSegOff;
 	unsigned int pchi = ranges.front().pchi - codeSegOff;
@@ -975,7 +975,7 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int base
 }
 
 // Add a class/struct/union to the database.
-int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor& cursor)
+int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 {
 	//printf("Adding struct %s, entryoff %d, abbrev %d\n", structid.name, structid.entryOff, structid.abbrev);
 
@@ -1024,7 +1024,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor& cursor)
 }
 
 // Compute the array bounds of the DIE at the given 'cursor'.
-void CV2PDB::getDWARFArrayBounds(DIECursor& cursor, int& basetype, int& lowerBound, int& upperBound)
+void CV2PDB::getDWARFArrayBounds(DIECursor cursor, int& basetype, int& lowerBound, int& upperBound)
 {
 	DWARF_InfoData id;
 
@@ -1066,6 +1066,7 @@ void CV2PDB::getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, const DIECursor& p
 	upperBound = subrangeid.upper_bound;
 }
 
+// Compute a type ID for a basic DWARF type.
 int CV2PDB::getDWARFBasicType(int encoding, int byte_size)
 {
 	int type = 0, mode = 0, size = 0;
@@ -1131,7 +1132,7 @@ int CV2PDB::getDWARFBasicType(int encoding, int byte_size)
 // TODO: Array wanted to be scanned twice due to DW_TAG_subrange_type being looked at
 // in the caller. See if it can be handled in a single place for clarity, simplicity & efficiency.
 // Goal: don't rescan the same DIE twice.
-int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, DIECursor& cursor)
+int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, const DIECursor& cursor)
 {
 	int basetype, upperBound, lowerBound;
 	getDWARFArrayBounds(cursor, basetype, lowerBound, upperBound);
@@ -1227,7 +1228,7 @@ int CV2PDB::addDWARFBasicType(const char*name, int encoding, int byte_size)
 	return cvtype;
 }
 
-int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor& cursor)
+int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 {
 	/* Enumerated types are described in CodeView with two components:
 
@@ -1269,11 +1270,9 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor& cursor)
 	fieldlistLength += 4;
 
 	/* Now fill this field list with the enumerators we find in DWARF. */
-	DWARF_InfoData* node = nullptr;
-	while ((node = cursor.readNext(nullptr, true /* stopAtNull */)) != nullptr)
+	DWARF_InfoData id;
+	while (cursor.readNext(&id, true /* stopAtNull */))
 	{
-		DWARF_InfoData& id = *node;
-
 		if (id.tag == DW_TAG_enumerator && id.has_const_value)
 		{
 			cbDwarfTypes = fieldlistOffset + fieldlistLength;

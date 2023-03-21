@@ -174,15 +174,15 @@ public:
 	void dumpDwarfTree() const;
 
 	bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
-	bool addDWARFProc(DWARF_InfoData& id, const std::vector<RangeEntry> &ranges, DIECursor& cursor);
-	int  addDWARFStructure(DWARF_InfoData& id, DIECursor& cursor);
+	bool addDWARFProc(DWARF_InfoData& id, const std::vector<RangeEntry> &ranges, DIECursor cursor);
+	int  addDWARFStructure(DWARF_InfoData& id, DIECursor cursor);
 	int  addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int off, int flStart);
-	int  addDWARFArray(DWARF_InfoData& arrayid, DIECursor& cursor);
+	int  addDWARFArray(DWARF_InfoData& arrayid, const DIECursor& cursor);
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
-	int  addDWARFEnum(DWARF_InfoData& enumid, DIECursor& cursor);
+	int  addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor);
 	int  getTypeByDWARFPtr(byte* ptr);
 	int  getDWARFTypeSize(const DIECursor& parent, byte* ptr);
-	void getDWARFArrayBounds(DIECursor& cursor,
+	void getDWARFArrayBounds(DIECursor cursor,
 		int& basetype, int& lowerBound, int& upperBound);
 	void getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, const DIECursor& parent,
 		int& basetype, int& lowerBound, int& upperBound);
