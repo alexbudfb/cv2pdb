@@ -695,6 +695,64 @@ void CV2PDB::appendLexicalBlock(DWARF_InfoData& id, unsigned int proclo)
 	cbUdtSymbols += len;
 }
 
+// Helper to format a fully qualified proc name like 'some_ns::Foo::Foo' since
+// for a Foo constructor in a Foo class in a namespace called "some_ns".
+// PDBs require fully qualified names in their symbols.
+// TODO: better error handling for out of space.
+void formatFullyQualifiedProcName(const DWARF_InfoData* proc, char* buf, size_t cbBuf) {
+	DWARF_InfoData* parent = proc->parent;
+	std::vector<const DWARF_InfoData*> segments;
+	segments.push_back(proc);
+
+	// Accumulate all the valid parent scopes so that we can reverse them for
+	// formatting.
+	while (parent) {
+		switch (parent->tag) {
+		// TODO: are there any other kinds of valid parents?
+		case DW_TAG_class_type:
+		case DW_TAG_structure_type:
+		case DW_TAG_namespace:			
+			segments.push_back(parent);
+			break;
+		default:
+			break;
+		}
+		parent = parent->parent;
+	}
+
+	int remain = cbBuf;
+	char* p = buf;
+
+	// Format the parents in reverse order with :: operator in between.
+	for (int i = segments.size() - 1; i >= 0; --i) {
+		const int nameLen = strlen(segments[i]->name);
+		if (remain < nameLen) {
+			fprintf(stderr, "unable to fit full proc name: %s\n", proc->name);
+			return;
+		}
+
+		memcpy(p, segments[i]->name, nameLen);
+
+		p += nameLen;
+		remain -= nameLen;
+
+		if (i > 0) {
+			// Append :: separator
+			if (remain < 2) {
+				fprintf(stderr, "unable to fit full proc name (:: separator): %s\n", proc->name);
+				return;
+			}
+			*p++ = ':';
+			*p++ = ':';
+			remain -= 2;
+		}
+	}
+	
+	if (remain > 0) {
+		*p = 0;  // NUL terminate.
+	}
+}
+
 bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> &ranges, DIECursor cursor)
 {
 	unsigned int pclo = ranges.front().pclo - codeSegOff;
@@ -723,8 +781,9 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	cvs->proc_v2.flags    = 0;
 
 //    printf("GlobalPROC %s\n", procid.name);
-
-	len = cstrcpy_v (v3, (BYTE*) &cvs->proc_v2.p_name, procid.name);
+	char namebuf[kMaxNameLen] = {};
+	formatFullyQualifiedProcName(&procid, namebuf, sizeof namebuf);
+	len = cstrcpy_v (v3, (BYTE*) &cvs->proc_v2.p_name, namebuf);
 	len += (BYTE*) &cvs->proc_v2.p_name - (BYTE*) cvs;
 	for (; len & (align-1); len++)
 		udtSymbols[cbUdtSymbols + len] = 0xf4 - (len & 3);
@@ -1750,7 +1809,6 @@ void dumpTreeHelper(DWARF_InfoData* node, int level) {
 	}
 }
 
-// TODO: try this out.
 void CV2PDB::dumpDwarfTree() const {
 	dumpTreeHelper(dwarfHead, 0);	
 }
