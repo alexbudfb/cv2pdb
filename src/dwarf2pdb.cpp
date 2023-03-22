@@ -1489,6 +1489,9 @@ bool CV2PDB::createTypes()
 
 	unsigned long off = 0;
 
+	// Maintain the first node of each CU to ensure all of them get linked.
+	DWARF_InfoData* firstNode = nullptr;
+
 	// Scan each compilation unit in '.debug_info'.
 	while (off < img.debug_info.length)
 	{
@@ -1510,12 +1513,22 @@ bool CV2PDB::createTypes()
 
 		// Start scanning this CU from the beginning and *build a tree of DIE nodes*.
 		DIECursor cursor(&cu, ptr);
+
+		// Set up link to ensure this CU links to the prior one.
+		cursor.prevNode = firstNode;
+
 		DWARF_InfoData* node = nullptr;
+		bool setFirstNode = false;
 		while ((node = cursor.readNext(nullptr)) != nullptr)
 		{
 			// Initialize the head of the DWARF DIE list the first time.
 			if (!dwarfHead) {
 				dwarfHead = node;
+			}
+
+			if (!setFirstNode) {
+				firstNode = node;
+				setFirstNode = true;
 			}
 
 			DWARF_InfoData& id = *node;
