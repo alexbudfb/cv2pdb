@@ -1726,24 +1726,14 @@ void printIndent(int level) {
 }
 
 void dumpTreeHelper(DWARF_InfoData* node, int level) {
-	if (!node) return;
-	printIndent(level);
-	// First dump node
-	const unsigned dieOffset = node->img->debug_info.sectOff(node->entryPtr);
-	printf("offset: %#x, name: \"%s\", tag: %#x, abbrev: %d\n", dieOffset, node->name, node->tag, node->code);
+	for (DWARF_InfoData* n = node; n; n = n->next) {
+		const unsigned dieOffset = n->img->debug_info.sectOff(n->entryPtr);
 
-	printIndent(level);
-	// Then dump children.
-	printf("children:\n");
-	for (DWARF_InfoData* child = node->children; child; child = child->next) {
-		dumpTreeHelper(child, level + 1);
-	}
-	
-	printIndent(level);
-	// Then dump siblings.
-	printf("siblings:\n");
-	for (DWARF_InfoData* n = node->next; n; n = n->next) {
-		dumpTreeHelper(n, level);
+		printIndent(level);
+		printf("offset: %#x, name: \"%s\", tag: %#x, abbrev: %d\n", dieOffset, n->name, n->tag, n->code);
+
+		// Visit the children.
+		dumpTreeHelper(n->children, level + 1);
 	}
 }
 
