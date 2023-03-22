@@ -169,12 +169,15 @@ public:
 	bool addDWARFLines();
 	bool addDWARFPublics();
 	bool writeDWARFImage(const TCHAR* opath);
+	DWARF_InfoData* findEntryByPtr(byte* entryPtr) const;
 
 	// Helper to just print the DWARF tree we've built for debugging purposes.
 	void dumpDwarfTree() const;
 
 	bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
 	bool addDWARFProc(DWARF_InfoData& id, const std::vector<RangeEntry> &ranges, DIECursor cursor);
+	void formatFullyQualifiedProcName(const DWARF_InfoData* proc, char* buf, size_t cbBuf) const;
+
 	int  addDWARFStructure(DWARF_InfoData& id, DIECursor cursor);
 	int  addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int off, int flStart);
 	int  addDWARFArray(DWARF_InfoData& arrayid, const DIECursor& cursor);
@@ -281,7 +284,11 @@ public:
 
 	// DWARF
 	int codeSegOff;
-	std::unordered_map<byte*, int> mapOffsetToType;
+
+	// Lookup table for type IDs based on the DWARF_InfoData::entryPtr
+	std::unordered_map<byte*, int> mapEntryPtrToTypeID;
+	// Lookup table for entries based on the DWARF_InfoData::entryPtr
+	std::unordered_map<byte*, DWARF_InfoData*> mapEntryPtrToEntry;
 
 	// Head of list of DWARF DIE nodes.
 	DWARF_InfoData* dwarfHead = nullptr;

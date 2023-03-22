@@ -4,12 +4,9 @@
 #include <memory> // unique_ptr
 
 #include "PEImage.h"
+#include "cv2pdb.h"
 #include "dwarf.h"
 #include "mspdb.h"
-extern "C" {
-	#include "mscvpdb.h"
-}
-
 
 // declare hasher for pair<T1,T2>
 namespace std
@@ -367,35 +364,51 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 }
 
 // Find the source of an inlined function by following its 'abstract_origin' 
-// attribute references  and recursively merge it into 'id'.
-void mergeAbstractOrigin(DWARF_InfoData& id, const DIECursor& parent)
+// attribute references and recursively merge it into 'id'.
+// TODO: this description isn't quite right. See section 3.3.8.1 in DWARF 4 spec.
+void mergeAbstractOrigin(DWARF_InfoData& id, const CV2PDB& context)
 {
-	DIECursor specCursor(parent, id.abstract_origin);
-	DWARF_InfoData idspec;
-	specCursor.readNext(&idspec);
-	// assert seems invalid, combination DW_TAG_member and DW_TAG_variable found in the wild
+	DWARF_InfoData* abstractOrigin = context.findEntryByPtr(id.abstract_origin);
+	if (!abstractOrigin) {
+		// Could not find abstract origin. Why not?
+		assert(false);
+		return;
+	}
+
+	// assert seems invalid, combination DW_TAG_member and DW_TAG_variable found
+	// in the wild.
+	//
 	// assert(id.tag == idspec.tag);
-	if (idspec.abstract_origin)
-		mergeAbstractOrigin(idspec, parent);
-	if (idspec.specification)
-		mergeSpecification(idspec, parent);
-	id.merge(idspec);
+
+	if (abstractOrigin->abstract_origin)
+		mergeAbstractOrigin(*abstractOrigin, context);
+	if (abstractOrigin->specification)
+		mergeSpecification(*abstractOrigin, context);
+	id.merge(*abstractOrigin);
 }
 
-// Find the source of a definition by following its 'specification' attribute 
-// references and merge it into 'id'.
-void mergeSpecification(DWARF_InfoData& id, const DIECursor& parent)
+// Find the declaration entry for a definition by following its 'specification'
+// attribute references and merge it into 'id'.
+void mergeSpecification(DWARF_InfoData& id, const CV2PDB& context)
 {
-	DIECursor specCursor(parent, id.specification);
-	DWARF_InfoData idspec;
-	specCursor.readNext(&idspec);
-	//assert seems invalid, combination DW_TAG_member and DW_TAG_variable found in the wild
-	//assert(id.tag == idspec.tag);
-	if (idspec.abstract_origin)
-		mergeAbstractOrigin(idspec, parent);
-	if (idspec.specification)
-		mergeSpecification(idspec, parent);
-	id.merge(idspec);
+	DWARF_InfoData* idspec = context.findEntryByPtr(id.specification);
+	if (!idspec) {
+		// Could not find decl for this definition. Why not?
+		assert(false);
+		return;
+	}
+
+	// assert seems invalid, combination DW_TAG_member and DW_TAG_variable found
+	// in the wild.
+	//
+	// assert(id.tag == idspec.tag);
+
+	if (idspec->abstract_origin)
+		mergeAbstractOrigin(*idspec, context);
+	if (idspec->specification) {
+		mergeSpecification(*idspec, context);
+	}
+	id.merge(*idspec);
 }
 
 LOCCursor::LOCCursor(const DIECursor& parent, unsigned long off)
@@ -932,6 +945,7 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 			case DW_AT_type:      assert(a.type == Ref); id.type = a.ref; break;
 			case DW_AT_inline:    assert(a.type == Const); id.inlined = a.cons; break;
 			case DW_AT_external:  assert(a.type == Flag); id.external = a.flag; break;
+			case DW_AT_declaration: assert(a.type == Flag); id.isDecl = a.flag; break;
 			case DW_AT_upper_bound:
 				assert(a.type == Const || a.type == Ref || a.type == ExprLoc || a.type == Block);
 				if (a.type == Const) // TODO: other types not supported yet

@@ -11,6 +11,7 @@
 typedef unsigned char byte;
 class PEImage;
 class DIECursor;
+class CV2PDB;
 struct SectionDescriptor;
 
 enum DebugLevel : unsigned {
@@ -186,7 +187,7 @@ struct DWARF_InfoData
 	// The PEImage for this entry.
 	PEImage* img = nullptr;
 
-	// Pointer into the mapped image section where this DIE is located.
+	// Pointer into the memory-mapped image section where this DIE is located.
 	byte* entryPtr;
 
 	// Code to find the abbrev entry for this DIE, or 0 if it a sentinel marking
@@ -228,10 +229,14 @@ struct DWARF_InfoData
 	// Pointer to the DW_AT_type DIE describing the type of this DIE.
 	byte* type;
 	byte* containing_type;
+
+	// Pointer to the DIE representing the declaration for this element if it
+	// is a definition. E.g. function decl for its definition/body.
 	byte* specification;
 	byte* abstract_origin;
 	unsigned long inlined;
-	bool external;
+	bool external = false; // is this subroutine visible outside its compilation unit?
+	bool isDecl = false; // is this a declaration?
 	DWARF_Attribute location;
 	DWARF_Attribute member_location;
 	DWARF_Attribute frame_base;
@@ -268,7 +273,8 @@ struct DWARF_InfoData
 		specification = 0;
 		abstract_origin = 0;
 		inlined = 0;
-		external = 0;
+		external = false;
+		isDecl = false;
 		member_location.type = Invalid;
 		location.type = Invalid;
 		frame_base.type = Invalid;
@@ -524,8 +530,8 @@ typedef std::unordered_map<std::pair<unsigned, unsigned>, byte*> abbrevMap_t;
 // as either an absolute value, a register, or a register-relative address.
 Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
 
-void mergeAbstractOrigin(DWARF_InfoData& id, const DIECursor& parent);
-void mergeSpecification(DWARF_InfoData& id, const DIECursor& parent);
+void mergeAbstractOrigin(DWARF_InfoData& id, const CV2PDB& context);
+void mergeSpecification(DWARF_InfoData& id, const CV2PDB& context);
 
 // Debug Information Entry Cursor
 class DIECursor
